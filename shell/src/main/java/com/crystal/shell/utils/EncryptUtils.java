@@ -7,7 +7,7 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  *
  * date 2020/8/6.
- * description： 解密工具类
+ * description：    解密工具类
  */
 public class EncryptUtils {
     private final byte[] KEY = "QUmkLrrISiud6RPU".getBytes(); // 加密使用的key
