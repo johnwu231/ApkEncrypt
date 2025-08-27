@@ -4,7 +4,12 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.util.zip.*
+import java.io.IOException
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
 
 /**
  * @description
@@ -64,7 +69,8 @@ object ZipUtils {
     fun zip(sourceFile: File, zipFile: File) {
         zipFile.delete()
         //对输出的文件做CRC32校验
-        val zos = ZipOutputStream(CheckedOutputStream(FileOutputStream(zipFile), CRC32()))
+        val zos = ZipOutputStream(FileOutputStream(zipFile))
+        zos.setMethod(ZipOutputStream.STORED)
         compress(sourceFile, zos, "")
         zos.flush()
         zos.close()
@@ -93,6 +99,7 @@ object ZipUtils {
             sb.append(File.separator)
         }
         val entry = ZipEntry(sb.toString().substring(1))
+        setupStoredEntryForFile(entry, sourceFile)
         zos.putNextEntry(entry)
         val bis = BufferedInputStream(FileInputStream(sourceFile))
         var count: Int
@@ -108,6 +115,7 @@ object ZipUtils {
         val listFiles = sourceFile.listFiles()
         if (listFiles == null || listFiles.isEmpty()) {
             val entry = ZipEntry(dir + sourceFile.name + File.separator)
+            setupStoredEntryForDirectory(entry);
             zos.putNextEntry(entry)
             zos.closeEntry()
         }
@@ -116,6 +124,56 @@ object ZipUtils {
             compress(file, zos, dir + sourceFile.name + File.separator)
         }
     }
+
+    /**
+     * 为目录设置 STORED 条目必需的属性
+     */
+    private fun setupStoredEntryForDirectory(entry: ZipEntry) {
+        entry.method = ZipEntry.STORED
+        entry.size = 0
+        entry.compressedSize = 0
+        entry.crc = 0 // 目录的 CRC32 为 0
+    }
+
+    /**
+     * 为文件设置 STORED 条目必需的属性
+     */
+    @Throws(IOException::class)
+    private fun setupStoredEntryForFile(entry: ZipEntry, file: File) {
+        entry.method = ZipEntry.STORED
+        // 计算文件大小和 CRC32
+        val fileInfo: FileInfo = calculateFileInfo(file)
+
+        entry.size = fileInfo.size
+        entry.compressedSize = fileInfo.size // 对于 STORED，压缩大小等于原始大小
+        entry.crc = fileInfo.crc
+    }
+
+    /**
+     * 计算文件的大小和 CRC32 校验和
+     */
+    @Throws(IOException::class)
+    private fun calculateFileInfo(file: File): FileInfo {
+        val crc32 = CRC32()
+        var size: Long = 0
+
+        FileInputStream(file).use { fis ->
+            BufferedInputStream(fis).use { bis ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while ((bis.read(buffer).also { bytesRead = it }) != -1) {
+                    crc32.update(buffer, 0, bytesRead)
+                    size += bytesRead.toLong()
+                }
+            }
+        }
+        return FileInfo(crc32.value, size)
+    }
+
+    /**
+     * 文件信息封装类
+     */
+    class FileInfo internal constructor(val crc: Long, val size: Long)
 
 
     /**
